@@ -10,13 +10,16 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@sparticuz/chromium": "^126.0.0",
     "axios": "^1.10.0",
     "captcha-solver": "^0.0.6",
+    "chrome-aws-lambda": "^10.1.0",
     "csv-writer": "^1.6.0",
     "exceljs": "^4.4.0",
     "fs": "^0.0.1-security",
     "path": "^0.12.7",
     "puppeteer": "^24.10.1",
+    "puppeteer-core": "^10.4.0",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2"
   }

@@ -5,7 +5,7 @@ const ExcelJS = require('exceljs');
 const axios = require('axios');
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-const randomtime = (min = 0, max = 10) => Math.floor(Math.random() * (max - min + 1)) + min;
+const randomtime = (min = 100, max = 100) => Math.floor(Math.random() * (max - min + 1)) + min;
 
 (async () => {
   // Create a timestamped parent folder
@@ -21,7 +21,7 @@ const randomtime = (min = 0, max = 10) => Math.floor(Math.random() * (max - min 
   }
 
   const browser = await puppeteer.launch({
-    executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe', // Use real Chrome
+    // executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe', // Use real Chrome
     headless: false, // Open a visible browser window
     args: [
       '--no-sandbox',
@@ -43,7 +43,6 @@ const randomtime = (min = 0, max = 10) => Math.floor(Math.random() * (max - min 
       '--disable-client-side-phishing-detection',
       '--disable-component-update',
       '--window-size=1280,800'
-
     ]
   });
   const totalPages = 2; // Set the number of pages to scrape
@@ -78,10 +77,11 @@ const randomtime = (min = 0, max = 10) => Math.floor(Math.random() * (max - min 
 
     for (let i = 0; i < propertyLinks.length; i++) {
       // await delay(randomtime()); // Wait for random seconds to ensure the page is fully loaded
+      console.log(`${i} Scrapping in the  ${propertyLinks[i]}`);
 
       const url = propertyLinks[i];
       const detailPage = await browser.newPage();
-      await detailPage.goto(url, { waitUntil: 'domcontentloaded' });
+      await detailPage.goto(url, { waitUntil: 'domcontentloaded' ,timeout: 0 });
 
       // Create folder for images
       const propertyFolderName = `property_${i + 1 + (pageNum - 1) * propertyLinks.length}`;
@@ -100,7 +100,7 @@ const randomtime = (min = 0, max = 10) => Math.floor(Math.random() * (max - min 
       console.log('count: %d', imageUrls.length);
 
       // Download images into folder
-      // await delay(randomtime); // Wait for 2 seconds before downloading images
+      //await delay(randomtime); // Wait for 2 seconds before downloading images
 
       for (let j = 0; j < imageUrls.length; j++) {
         const imageUrl = imageUrls[j];
@@ -237,7 +237,7 @@ const randomtime = (min = 0, max = 10) => Math.floor(Math.random() * (max - min 
     if (nextPageExists) {
       console.log('Navigating to the next page...');
       await page.click(nextPageButtonSelector);
-      await page.waitForNavigation({ waitUntil: 'domcontentloaded' });
+      await page.waitForNavigation({ waitUntil: 'domcontentloaded',timeout: 0  });
     } else {
       console.log('No next page button found. Ending pagination.');
     }

@@ -1,30 +1,18 @@
 const puppeteer = require('puppeteer');
-const fs = require('fs');
-const path = require('path');
-const ExcelJS = require('exceljs');
-const axios = require('axios');
+const chromium = require('chrome-aws-lambda');
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-const randomtime = (min = 5000, max = 6000) => Math.floor(Math.random() * (max - min + 1)) + min;
+const randomtime = (min = 0, max = 10) => Math.floor(Math.random() * (max - min + 1)) + min;
 
-(async () => {
-  // Create a timestamped parent folder
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const parentDir = path.join(__dirname, "homes" + timestamp);
-  if (!fs.existsSync(parentDir)) {
-    fs.mkdirSync(parentDir);
-  }
-
+exports.handler = async () => {
   const browser = await puppeteer.launch({
-    executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe', // Use real Chrome
     headless: false, // Open a visible browser window
     args: [
-'--no-sandbox',
+      '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
       '--disable-extensions',
       '--disable-infobars',
-      '--window-size=1920,1080',
       '--disable-gpu',
       '--disable-web-security',
       '--allow-running-insecure-content',
@@ -41,239 +29,168 @@ const randomtime = (min = 5000, max = 6000) => Math.floor(Math.random() * (max -
       '--window-size=1280,800'
     ]
   });
-  const totalPages = 1; // Set the number of pages to scrape
+  const totalPages = 2; // Set the number of pages to scrape
 
   const allRecords = []; // To store all property data
 
   for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
-    const pageUrl = `https://www.homes.co.jp/mansion/chuko/chiba/list/?page=${pageNum}`;
-
+    const pageUrl = `https://suumo.jp/jj/bukken/ichiran/JJ012FC001/?ar=030&bs=011&cn=9999999&cnb=0&et=9999999&initFlg=1&kb=1&kki=101&kt=9999999&mb=0&mt=9999999&ta=12&tj=0&pc=30&po=1&pj=2&page=${pageNum}`;
     const page = await browser.newPage();
     await page.goto(pageUrl, { waitUntil: 'domcontentloaded' });
-
     console.log(`Scraping page ${pageNum}: ${pageUrl}`);
 
-    await delay(randomtime());
-    await page.select('#cond_sortby', 'newdate'); // Sort by "新着順"
-    await delay(randomtime());
-    await page.select('#cond_newdate', '1'); // select "本日"
 
-    await delay(randomtime());
     // Get property links
+
     const propertyLinks = await page.evaluate(() => {
-      const links = Array.from(document.querySelectorAll('.mod-bukkenList .prg-bundle .mod-mergeBuilding--sale .moduleInner .moduleHead h3 a'));
+      const links = Array.from(document.querySelectorAll('h2.property_unit-title a'));
       return links.map(link => link.href);
     });
 
-    for (let i = 0; i < propertyLinks.length; i++) {
-      console.log(`Property ${i + 1} URL: ${propertyLinks[i]}`);
-    }
-
     console.log(`Found ${propertyLinks.length} properties on page ${pageNum}.`);
 
-    for (let i = 0; i < Math.min(3, propertyLinks.length); i++) {
-      await delay(randomtime()); // Wait for 2 seconds to ensure the page is fully loaded
-
+    for (let i = 0; i < Math.min(30, propertyLinks.length); i++) {
+      await delay(randomtime(5000, 5000));
+      console.log(`${i + 1 +propertyLinks.length * (pageNum -1)} Scrapping in the ${propertyLinks[i]}`);
       const url = propertyLinks[i];
       const detailPage = await browser.newPage();
-      await detailPage.goto(url, { waitUntil: 'domcontentloaded' });
-
-      // Create folder for images
-      const propertyFolderName = `property_${i + 1 + (pageNum - 1) * propertyLinks.length}`;
-      const propertyFolderPath = path.join(parentDir, propertyFolderName);
-      if (!fs.existsSync(propertyFolderPath)) {
-        fs.mkdirSync(propertyFolderPath);
-      }
+      await detailPage.goto(url, { waitUntil: 'domcontentloaded', timeout: 0 });
 
       // Extract image URLs
       const imageUrls = await detailPage.evaluate(() => {
-        const imgs = Array.from(document.querySelectorAll('.max-w-screen.object-contain'));
-        console.log('Image count:', imgs.length);
-        return imgs.slice(0, 5).map(img => img.src || img.getAttribute('rel'));
+        const imgs = Array.from(document.querySelectorAll('.js-slideLazy-image.js-noContextMenu'));
+        const srcs = imgs.map(img => img.src || img.getAttribute('rel'));
+        return srcs.slice(0, 5);
       });
-
-      console.log('count: %d', imageUrls.length);
-
-      // Download images into folder
-      await delay(randomtime); // Wait for 2 seconds before downloading images
-
-      for (let j = 0; j < imageUrls.length; j++) {
-        const imageUrl = imageUrls[j];
-        console.log("sdf");
-        const imagePath = path.join(propertyFolderPath, `image_${j + 1}.jpg`);
-        try {
-          const response = await axios.get(imageUrl, { responseType: 'arraybuffer' });
-          fs.writeFileSync(imagePath, response.data);
-        } catch (err) {
-          console.error(`Failed to download image ${imageUrl}: ${err.message}`);
-        }
-      }
 
       const detailinfo = await detailPage.evaluate(() => {
         const info = [];
         let element = '';
-        element = document.querySelector('tbody.divide-y.divide-mono-300 tr:nth-child(1) td p');
+        element = document.querySelector('table.bdclps.mt10 tbody tr:nth-child(1) td:nth-child(2)');
         info[0] = element ? element.textContent.trim() : '';
-        element = document.querySelector('tbody.divide-y.divide-mono-300 tr:nth-child(2) td');
+        element = document.querySelector('table.bdclps.mt10 tbody tr:nth-child(1) td:nth-child(4)');
         info[1] = element ? element.textContent.trim() : '';
-        element = document.querySelector('tbody.divide-y.divide-mono-300 tr:nth-child(3) td');
+        element = document.querySelector('table.bdclps.mt10 tbody tr:nth-child(2) td:nth-child(2)');
         info[2] = element ? element.textContent.trim() : '';
-        element = document.querySelector('tbody.divide-y.divide-mono-300 tr:nth-child(4) td');
+        element = document.querySelector('table.bdclps.mt10 tbody tr:nth-child(2) td:nth-child(4)');
         info[3] = element ? element.textContent.trim() : '';
-        element = document.querySelector('tbody.divide-y.divide-mono-300 tr:nth-child(5) td');
+        element = document.querySelector('table.bdclps.mt10 tbody tr:nth-child(3) td:nth-child(2)');
         info[4] = element ? element.textContent.trim() : '';
-        element = document.querySelector('tbody.divide-y.divide-mono-300 tr:nth-child(6) td');
+        element = document.querySelector('table.bdclps.mt10 tbody tr:nth-child(3) td:nth-child(4)');
         info[5] = element ? element.textContent.trim() : '';
-        element = document.querySelector('tbody.divide-y.divide-mono-300 tr:nth-child(7) td');
+        element = document.querySelector('table.bdclps.mt10 tbody tr:nth-child(4) td:nth-child(2)');
         info[6] = element ? element.textContent.trim() : '';
-        element = document.querySelector('tbody.divide-y.divide-mono-300 tr:nth-child(8) td');
+        element = document.querySelector('table.bdclps.mt10 tbody tr:nth-child(4) td:nth-child(4)');
         info[7] = element ? element.textContent.trim() : '';
-        element = document.querySelector('tbody.divide-y.divide-mono-300 tr:nth-child(9) td');
+        element = document.querySelector('table.bdclps.mt10 tbody tr:nth-child(5) td:nth-child(2)');
         info[8] = element ? element.textContent.trim() : '';
-        element = document.querySelector('tbody.divide-y.divide-mono-300 tr:nth-child(10) td');
+        element = document.querySelector('table.bdclps.mt10 tbody tr:nth-child(5) td:nth-child(4)');
         info[9] = element ? element.textContent.trim() : '';
-        element = document.querySelector('tbody.divide-y.divide-mono-300 tr:nth-child(11) td');
+        element = document.querySelector('table.bdclps.mt10 tbody tr:nth-child(6) td:nth-child(2)');
         info[10] = element ? element.textContent.trim() : '';
-        element = document.querySelector('tbody.divide-y.divide-mono-300 tr:nth-child(12) td');
+        element = document.querySelector('table.bdclps.mt10 tbody tr:nth-child(6) td:nth-child(4)');
         info[11] = element ? element.textContent.trim() : '';
-        element = document.querySelector('tbody.divide-y.divide-mono-300 tr:nth-child(13) td');
+        element = document.querySelector('table.bdclps.mt10 tbody tr:nth-child(7) td:nth-child(2)');
         info[12] = element ? element.textContent.trim() : '';
-        element = document.querySelector('tbody.divide-y.divide-mono-300 tr:nth-child(14) td');
+        element = document.querySelector('table.bdclps.mt10 tbody tr:nth-child(7) td:nth-child(4)');
         info[13] = element ? element.textContent.trim() : '';
-        element = document.querySelector('tbody.divide-y.divide-mono-300 tr:nth-child(15) td');
+        element = document.querySelector('table.bdclps.mt10 tbody tr:nth-child(8) td:nth-child(2)');
         info[14] = element ? element.textContent.trim() : '';
-        element = document.querySelector('tbody.divide-y.divide-mono-300 tr:nth-child(16) td');
+        element = document.querySelector('table.bdclps.mt10 tbody tr:nth-child(8) td:nth-child(4)');
         info[15] = element ? element.textContent.trim() : '';
-        element = document.querySelector('tbody.divide-y.divide-mono-300 tr:nth-child(17) td');
+        element = document.querySelector('table.bdclps.mt10 tbody tr:nth-child(9) td:nth-child(2)');
         info[16] = element ? element.textContent.trim() : '';
-        element = document.querySelector('tbody.divide-y.divide-mono-300 tr:nth-child(18) td p');
+        element = document.querySelector('table.bdclps.mt10 tbody tr:nth-child(9) td:nth-child(4)');
         info[17] = element ? element.textContent.trim() : '';
-        element = document.querySelector('tbody.divide-y.divide-mono-300 tr:nth-child(19) td');
+        element = document.querySelector('table.bdclps.mt10 tbody tr:nth-child(10) td:nth-child(2)');
         info[18] = element ? element.textContent.trim() : '';
-        element = document.querySelector('tbody.divide-y.divide-mono-300 tr:nth-child(20) td');
+        element = document.querySelector('table.bdclps.mt10 tbody tr:nth-child(10) td:nth-child(4)');
         info[19] = element ? element.textContent.trim() : '';
-        element = document.querySelector('tbody.divide-y.divide-mono-300 tr:nth-child(21) td');
+        element = document.querySelector('table.bdclps.mt10 tbody tr:nth-child(11) td');
         info[20] = element ? element.textContent.trim() : '';
-        element = document.querySelector('tbody.divide-y.divide-mono-300 tr:nth-child(22) td');
+        element = document.querySelector('table.bdclps.mt10 tbody tr:nth-child(12) td');
         info[21] = element ? element.textContent.trim() : '';
-        element = document.querySelector('#about div.mt-6 div.space-y-1 p:nth-child(1)');
-        info[22] = element ? element.textContent.trim().split('：')[1] : '';
-        element = document.querySelector('#about div.mt-6 div.space-y-1 p:nth-child(2)');
-        info[23] = element ? element.textContent.trim().split('：')[1] : '';
-        element = document.querySelector('#about div.mt-6 div.space-y-1 p:nth-child(3)');
-        info[24] = element ? element.textContent.trim().split('：')[1] : '';
-        element = document.querySelector('#about div.mt-6 div.space-y-1 p:nth-child(4)');
-
-
-        element = document.querySelector('.sticky.w-80.rounded-lg div div div p');
+        element = document.querySelectorAll('table.bdclps.mt10')[1]?.querySelector('tbody tr:nth-child(1) td:nth-child(2)');
+        info[22] = element ? element.textContent.trim() : '';
+        element = document.querySelectorAll('table.bdclps.mt10')[1]?.querySelector('tbody tr:nth-child(1) td:nth-child(4)');
+        info[23] = element ? element.textContent.trim() : '';
+        element = document.querySelectorAll('table.bdclps.mt10')[1]?.querySelector('tbody tr:nth-child(2) td:nth-child(2)');
+        info[24] = element ? element.textContent.trim() : '';
+        element = document.querySelectorAll('table.bdclps.mt10')[1]?.querySelector('tbody tr:nth-child(2) td:nth-child(4)');
         info[25] = element ? element.textContent.trim() : '';
-        element = document.querySelector('.sticky.w-80.rounded-lg .mt-4.space-y-1 p:nth-child(2)');
-        info[26] = element ? element.textContent.trim().split('：')[1] : '';
+        element = document.querySelectorAll('table.bdclps.mt10')[1]?.querySelector('tbody tr:nth-child(3) td:nth-child(2)');
+        info[26] = element ? element.textContent.trim() : '';
+        element = document.querySelectorAll('table.bdclps.mt10')[1]?.querySelector('tbody tr:nth-child(3) td:nth-child(4)');
+        info[27] = element ? element.textContent.trim() : '';
+        element = document.querySelectorAll('table.bdclps.mt10')[1]?.querySelector('tbody tr:nth-child(4) td:nth-child(2)');
+        info[28] = element ? element.textContent.trim() : '';
+        element = document.querySelectorAll('table.bdclps.mt10')[1]?.querySelector('tbody tr:nth-child(4) td:nth-child(4)');
+        info[29] = element ? element.textContent.trim() : '';
+        element = document.querySelector('table.mt10.bdGrayT.bdGrayL.bgWhite.pCell10.bdclps.wf.zm1 tbody tr:nth-child(2) td div');
+        info[30] = element ? element.textContent.trim() : '';
+        element = document.querySelector('table.mt10.bdGrayT.bdGrayL.bgWhite.pCell10.bdclps.wf.zm1 tbody tr:nth-child(2) td div.fgDRed');
+        info[31] = element ? element.textContent.trim().replace(/[^0-9\- \(\)]/g, '').trim() : '';
 
-
+        for (let i = 0; i < info.length; i++) {
+          info[i] = info[i].replace(/\t/g, '').replace(/\n+/g, '\n').trim();
+          console.log(`Detail info[${i}]: ${info[i]}`);
+        }
         return info;
       });
 
       // Prepare data record
       const record = {
-        url,
-        'ImageURLs1': imageUrls[0],
-        'ImageURLs2': imageUrls[1],
-        'ImageURLs3': imageUrls[2],
-        'ImageURLs4': imageUrls[3],
-        'ImageURLs5': imageUrls[4],
-        'info1': detailinfo[0],
-        'info2': detailinfo[1],
-        'info3': detailinfo[2],
-        'info4': detailinfo[3],
-        'info5': detailinfo[4],
-        'info6': detailinfo[5],
-        'info7': detailinfo[6],
-        'info8': detailinfo[7],
-        'info9': detailinfo[8],
-        'info10': detailinfo[9],
-        'info11': detailinfo[10],
-        'info12': detailinfo[11],
-        'info13': detailinfo[12],
-        'info14': detailinfo[13],
-        'info15': detailinfo[14],
-        'info16': detailinfo[15],
-        'info17': detailinfo[16],
-        'info18': detailinfo[17],
-        'info19': detailinfo[18],
-        'info20': detailinfo[19],
-        'info21': detailinfo[20],
-        'info22': detailinfo[21],
-        'info23': detailinfo[22],
-        'info24': detailinfo[23],
-        'info25': detailinfo[24],
-        'info26': detailinfo[25],
-        'info27': detailinfo[26],
-      };
-
+        '不動産のURL': url,
+        '画像1': imageUrls[0],
+        '画像2': imageUrls[1],
+        '画像3': imageUrls[2],
+        '画像4': imageUrls[3],
+        '画像5': imageUrls[4],
+        '株式会社': detailinfo[30],
+        'Tel': detailinfo[31],
+        '販売スケジュール': detailinfo[0],
+        'イベント情報': detailinfo[1],
+        '販売戸数': detailinfo[2],
+        '最多価格帯': detailinfo[3],
+        '価格': detailinfo[4],
+        '管理費': detailinfo[5],
+        '修繕積立金': detailinfo[6],
+        '修繕積立基金': detailinfo[7],
+        '諸費用': detailinfo[8],
+        '間取り': detailinfo[9],
+        '専有面積': detailinfo[10],
+        'その他面積': detailinfo[11],
+        '引渡可能時期': detailinfo[12],
+        '完成時期(築年月)': detailinfo[13],
+        '所在階': detailinfo[14],
+        '向き': detailinfo[15],
+        'エネルギー消費性能': detailinfo[16],
+        '断熱性能': detailinfo[17],
+        '目安光熱費': detailinfo[18],
+        'リフォーム': detailinfo[19],
+        'その他制限事項': detailinfo[20],
+        'その他概要・特記事項': detailinfo[21],
+        '所在地': detailinfo[22],
+        '交通': detailinfo[23],
+        '総戸数': detailinfo[24],
+        '構造・階建て': detailinfo[25],
+        '敷地面積': detailinfo[26],
+        '敷地の権利形態': detailinfo[27],
+        '用途地域': detailinfo[28],
+        '駐車場': detailinfo[29]
+      }
       // Add record to all records array
+      // console.log(JSON.stringify(record, null, 1));
       allRecords.push(record);
-
       await detailPage.close();
     }
 
     await page.close();
   }
 
-  const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet('Data');
-
-  // Define columns with desired widths
-  worksheet.columns = [
-    { header: 'Property URL', key: 'url', width: '20' },
-    { header: 'image1', key: 'ImageURLs1', width: '20' },
-    { header: 'image2', key: 'ImageURLs2', width: '20' },
-    { header: 'image3', key: 'ImageURLs3', width: '20' },
-    { header: 'image4', key: 'ImageURLs4', width: '20' },
-    { header: 'image5', key: 'ImageURLs5', width: '20' },
-    { header: '株式会社', key: 'info27', width: '30' },
-    { header: 'Tel', key: 'info26', width: '30' },
-    { header: '価格', key: 'info1', width: '30' },
-    { header: '管理費等', key: 'info2', width: '30' },
-    { header: '修繕積立金', key: 'info3', width: '30' },
-    { header: '間取り', key: 'info4', width: '30' },
-    { header: '専有面積', key: 'info5', width: '20' },
-    { header: 'バルコニー面積', key: 'info6', width: '20' },
-    { header: '築年月', key: 'info7', width: '20' },
-    { header: '所在地', key: 'info8', width: '20' },
-    { header: '交通', key: 'info9', width: '20' },
-    { header: '所在階 / 階数', key: 'info10', width: '20' },
-    { header: '総戸数', key: 'info11', width: '20' },
-    { header: '主要採光面', key: 'info12', width: '30' },
-    { header: '建物構造', key: 'info13', width: '20' },
-    { header: '用途地域', key: 'info14', width: '20' },
-    { header: '土地権利', key: 'info15', width: '20' },
-    { header: '国土法届出', key: 'info16', width: '30' },
-    { header: '管理', key: 'info17', width: '30' },
-    { header: '現況', key: 'info18', width: '30' },
-    { header: '引渡し', key: 'info19', width: '30' },
-    { header: '取引態様', key: 'info20', width: '30' },
-    { header: 'LIFULL HOME\'S 物件番号', key: 'info21', width: '30' },
-    { header: '自社管理番号', key: 'info22', width: '30' },
-
-    { header: '情報公開日', key: 'info23', width: '30' },
-    { header: '最新情報提供日', key: 'info24', width: '30' },
-    { header: '情報有効期限', key: 'info25', width: '30' },
-
-    { header: '株式会社', key: 'info26', width: '30' },
-    { header: 'Tel', key: 'info27', width: '30' },
-
-  ];
-
-  // Add data rows
-  allRecords.forEach(record => {
-    worksheet.addRow(record);
-  });
-
-  // Save the Excel file
-  const excelPath = path.join(parentDir, 'scrapping.xlsx');
-  await workbook.xlsx.writeFile(excelPath);
-  console.log('Scraping complete! Data saved.');
-
   await browser.close();
-})();
+  return {
+    statusCode: 500,
+    body: JSON.stringify(allRecords,null,1),
+  };
+};

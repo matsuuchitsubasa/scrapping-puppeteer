@@ -4,6 +4,9 @@ const path = require('path');
 const ExcelJS = require('exceljs');
 const axios = require('axios');
 
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+const randomtime = (min = 0, max = 10) => Math.floor(Math.random() * (max - min + 1)) + min;
+
 (async () => {
   // Create a timestamped parent folder
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -28,7 +31,9 @@ const axios = require('axios');
     await page.goto(pageUrl, { waitUntil: 'domcontentloaded' });
     console.log(`Scraping page ${pageNum}: ${pageUrl}`);
 
+    // await delay(randomtime(2000,3000));
     // Get property links
+    
     const propertyLinks = await page.evaluate(() => {
       const links = Array.from(document.querySelectorAll('h2.property_unit-title a'));
       return links.map(link => link.href);
@@ -37,10 +42,12 @@ const axios = require('axios');
     console.log(`Found ${propertyLinks.length} properties on page ${pageNum}.`);
 
     for (let i = 0; i < Math.min(30, propertyLinks.length); i++) {
+      console.log(`${i} Scrapping in the ${propertyLinks[i]}`);
       const url = propertyLinks[i];
       const detailPage = await browser.newPage();
-      await detailPage.goto(url, { waitUntil: 'domcontentloaded' });
+      await detailPage.goto(url, { waitUntil: 'domcontentloaded', timeout: 0 });
 
+      console.log('')
       // Create folder for images
       const propertyFolderName = `property_${i + 1 + (pageNum - 1) * propertyLinks.length}`;
       const propertyFolderPath = path.join(imageDir, propertyFolderName);
