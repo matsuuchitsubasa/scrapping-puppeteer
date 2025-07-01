@@ -1,8 +1,11 @@
 const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
-const ExcelJS = require('exceljs');
 const axios = require('axios');
+const createCsvWriter = require('csv-writer').createObjectCsvWriter;
+
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+const randomtime = (min = 0, max = 10) => Math.floor(Math.random() * (max - min + 1)) + min;
 
 (async () => {
   // Create a timestamped parent folder
@@ -28,7 +31,9 @@ const axios = require('axios');
     await page.goto(pageUrl, { waitUntil: 'domcontentloaded' });
     console.log(`Scraping page ${pageNum}: ${pageUrl}`);
 
+
     // Get property links
+
     const propertyLinks = await page.evaluate(() => {
       const links = Array.from(document.querySelectorAll('h2.property_unit-title a'));
       return links.map(link => link.href);
@@ -37,44 +42,48 @@ const axios = require('axios');
     console.log(`Found ${propertyLinks.length} properties on page ${pageNum}.`);
 
     for (let i = 0; i < Math.min(30, propertyLinks.length); i++) {
+      await delay(randomtime(2000, 3000));
+      const check = await page.evaluate(() => {
+        let element = document.querySelectorAll('span.ui-label')[i];
+        element = element ? element.textContent.trim() : '';
+        return element;
+      });
+      console.log(`Check label: ${check}`);
+      if (check !== '価格更新' && check !== '新着') continue;
+
+      console.log(`${i + 1} Scrapping in the ${propertyLinks[i]}`);
       const url = propertyLinks[i];
       const detailPage = await browser.newPage();
       await detailPage.goto(url, { waitUntil: 'domcontentloaded', timeout: 0 });
 
       // Create folder for images
-      // const propertyFolderName = `property_${i + 1 + (pageNum - 1) * propertyLinks.length}`;
-      // const propertyFolderPath = path.join(imageDir, propertyFolderName);
-      // if (!fs.existsSync(propertyFolderPath)) {
-      //   fs.mkdirSync(propertyFolderPath);
-      // }
+      const propertyFolderName = `property_${i + 1 + (pageNum - 1) * propertyLinks.length}`;
+      const propertyFolderPath = path.join(imageDir, propertyFolderName);
+      if (!fs.existsSync(propertyFolderPath)) {
+        fs.mkdirSync(propertyFolderPath);
+      }
 
       // Extract image URLs
-      // const imageUrls = await detailPage.evaluate(() => {
-      //   const imgs = Array.from(document.querySelectorAll('.js-slideLazy-image.js-noContextMenu'));
-      //   const srcs = imgs.map(img => img.src || img.getAttribute('rel'));
-      //   return srcs.slice(0, 5);
-      // });
+      const imageUrls = await detailPage.evaluate(() => {
+        const imgs = Array.from(document.querySelectorAll('.js-slideLazy-image.js-noContextMenu'));
+        const srcs = imgs.map(img => img.src || img.getAttribute('rel'));
+        return srcs.slice(0, 5);
+      });
 
       // Download images into folder
-      // for (let j = 0; j < imageUrls.length; j++) {
-      //   const imageUrl = imageUrls[j];
-      //   console.log(`Downloading image ${j + 1} from ${imageUrl}`);
-      //   const imagePath = path.join(propertyFolderPath, `image_${j + 1}.jpg`);
-      //   try {
-      //     const response = await axios.get(imageUrl, { responseType: 'arraybuffer' });
-      //     fs.writeFileSync(imagePath, response.data);
-      //   } catch (err) {
-      //     console.error(`Failed to download image ${imageUrl}: ${err.message}`);
-      //   }
-      // }
+      for (let j = 0; j < imageUrls.length; j++) {
+        const imageUrl = imageUrls[j];
+        console.log(`Downloading image ${j + 1} from ${imageUrl}`);
+        const imagePath = path.join(propertyFolderPath, `image_${j + 1}.jpg`);
+        try {
+          const response = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+          fs.writeFileSync(imagePath, response.data);
+        } catch (err) {
+          console.error(`Failed to download image ${imageUrl}: ${err.message}`);
+        }
+      }
 
       const detailinfo = await detailPage.evaluate(() => {
-
-        const imageUrls = Array.from(document.querySelectorAll('.js-slideLazy-image.js-noContextMenu'));
-        const srcs = imgs.map(img => img.src || img.getAttribute('rel'));
-        imageUrls = srcs.slice(0, 5);
-
-        console.log('Image URLs:', imageUrls);
         const info = [];
         let element = '';
         element = document.querySelector('table.bdclps.mt10 tbody tr:nth-child(1) td:nth-child(2)');
@@ -151,43 +160,43 @@ const axios = require('axios');
       // Prepare data record
       const record = {
         url,
-        // 'ImageURLs1': imageUrls[0],
-        // 'ImageURLs2': imageUrls[1],
-        // 'ImageURLs3': imageUrls[2],
-        // 'ImageURLs4': imageUrls[3],
-        // 'ImageURLs5': imageUrls[4],
-        // 'info1': detailinfo[0],
-        // 'info2': detailinfo[1],
-        // 'info3': detailinfo[2],
-        // 'info4': detailinfo[3],
-        // 'info5': detailinfo[4],
-        // 'info6': detailinfo[5],
-        // 'info7': detailinfo[6],
-        // 'info8': detailinfo[7],
-        // 'info9': detailinfo[8],
-        // 'info10': detailinfo[9],
-        // 'info11': detailinfo[10],
-        // 'info12': detailinfo[11],
-        // 'info13': detailinfo[12],
-        // 'info14': detailinfo[13],
-        // 'info15': detailinfo[14],
-        // 'info16': detailinfo[15],
-        // 'info17': detailinfo[16],
-        // 'info18': detailinfo[17],
-        // 'info19': detailinfo[18],
-        // 'info20': detailinfo[19],
-        // 'info21': detailinfo[20],
-        // 'info22': detailinfo[21],
-        // 'info23': detailinfo[22],
-        // 'info24': detailinfo[23],
-        // 'info25': detailinfo[24],
-        // 'info26': detailinfo[25],
-        // 'info27': detailinfo[26],
-        // 'info28': detailinfo[27],
-        // 'info29': detailinfo[28],
-        // 'info30': detailinfo[29],
-        // 'info31': detailinfo[30],
-        // 'info32': detailinfo[31],
+        'ImageURLs1': imageUrls[0],
+        'ImageURLs2': imageUrls[1],
+        'ImageURLs3': imageUrls[2],
+        'ImageURLs4': imageUrls[3],
+        'ImageURLs5': imageUrls[4],
+        'info1': detailinfo[0],
+        'info2': detailinfo[1],
+        'info3': detailinfo[2],
+        'info4': detailinfo[3],
+        'info5': detailinfo[4],
+        'info6': detailinfo[5],
+        'info7': detailinfo[6],
+        'info8': detailinfo[7],
+        'info9': detailinfo[8],
+        'info10': detailinfo[9],
+        'info11': detailinfo[10],
+        'info12': detailinfo[11],
+        'info13': detailinfo[12],
+        'info14': detailinfo[13],
+        'info15': detailinfo[14],
+        'info16': detailinfo[15],
+        'info17': detailinfo[16],
+        'info18': detailinfo[17],
+        'info19': detailinfo[18],
+        'info20': detailinfo[19],
+        'info21': detailinfo[20],
+        'info22': detailinfo[21],
+        'info23': detailinfo[22],
+        'info24': detailinfo[23],
+        'info25': detailinfo[24],
+        'info26': detailinfo[25],
+        'info27': detailinfo[26],
+        'info28': detailinfo[27],
+        'info29': detailinfo[28],
+        'info30': detailinfo[29],
+        'info31': detailinfo[30],
+        'info32': detailinfo[31],
       };
 
       // Add record to all records array
@@ -199,60 +208,55 @@ const axios = require('axios');
     await page.close();
   }
 
-  const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet('Data');
-
-  // Define columns with desired widths
-  worksheet.columns = [
-    { header: '不動産のURL', key: 'url', width: '20' },
-    // { header: '画像1', key: 'ImageURLs1', width: '20' },
-    // { header: '画像2', key: 'ImageURLs2', width: '20' },
-    // { header: '画像3', key: 'ImageURLs3', width: '20' },
-    // { header: '画像4', key: 'ImageURLs4', width: '20' },
-    // { header: '画像5', key: 'ImageURLs5', width: '20' },
-    // { header: '株式会社', key: 'info31', width: '30' },
-    // { header: 'Tel', key: 'info32', width: '30' },
-    // { header: '販売スケジュール', key: 'info1', width: '30' },
-    // { header: 'イベント情報', key: 'info2', width: '30' },
-    // { header: '販売戸数', key: 'info3', width: '30' },
-    // { header: '最多価格帯', key: 'info4', width: '30' },
-    // { header: '価格', key: 'info5', width: '20' },
-    // { header: '管理費', key: 'info6', width: '20' },
-    // { header: '修繕積立金', key: 'info7', width: '20' },
-    // { header: '修繕積立基金', key: 'info8', width: '20' },
-    // { header: '諸費用', key: 'info9', width: '20' },
-    // { header: '間取り', key: 'info10', width: '20' },
-    // { header: '専有面積', key: 'info11', width: '20' },
-    // { header: 'その他面積', key: 'info12', width: '30' },
-    // { header: '引渡可能時期', key: 'info13', width: '20' },
-    // { header: '完成時期(築年月)', key: 'info14', width: '20' },
-    // { header: '所在階', key: 'info15', width: '20' },
-    // { header: '向き', key: 'info16', width: '30' },
-    // { header: 'エネルギー消費性能', key: 'info17', width: '30' },
-    // { header: '断熱性能', key: 'info18', width: '30' },
-    // { header: '目安光熱費', key: 'info19', width: '30' },
-    // { header: 'リフォーム', key: 'info20', width: '30' },
-    // { header: 'その他制限事項', key: 'info21', width: '30' },
-    // { header: 'その他概要・特記事項', key: 'info22', width: '30' },
-    // { header: '所在地', key: 'info23', width: '30' },
-    // { header: '交通', key: 'info24', width: '100' },
-    // { header: '総戸数', key: 'info25', width: '30' },
-    // { header: '構造・階建て', key: 'info26', width: '30' },
-    // { header: '敷地面積', key: 'info27', width: '30' },
-    // { header: '敷地の権利形態', key: 'info28', width: '30' },
-    // { header: '用途地域', key: 'info29', width: '30' },
-    // { header: '駐車場', key: 'info30', width: '20' },
-  ];
-
-  // Add data rows
-  allRecords.forEach(record => {
-    worksheet.addRow(record);
+  // Save the CSV file
+  const csvPath = path.join(parentDir, 'scrapping.csv');
+  const csvWriter = createCsvWriter({
+    path: csvPath,
+    header: [
+      { id: 'url', title: '不動産のURL' },
+      { id: 'ImageURLs1', title: '画像1' },
+      { id: 'ImageURLs2', title: '画像2' },
+      { id: 'ImageURLs3', title: '画像3' },
+      { id: 'ImageURLs4', title: '画像4' },
+      { id: 'ImageURLs5', title: '画像5' },
+      { id: 'info31', title: '株式会社' },
+      { id: 'info32', title: 'Tel' },
+      { id: 'info1', title: '販売スケジュール' },
+      { id: 'info2', title: 'イベント情報' },
+      { id: 'info3', title: '販売戸数' },
+      { id: 'info4', title: '最多価格帯' },
+      { id: 'info5', title: '価格' },
+      { id: 'info6', title: '管理費' },
+      { id: 'info7', title: '修繕積立金' },
+      { id: 'info8', title: '修繕積立基金' },
+      { id: 'info9', title: '諸費用' },
+      { id: 'info10', title: '間取り' },
+      { id: 'info11', title: '専有面積' },
+      { id: 'info12', title: 'その他面積' },
+      { id: 'info13', title: '引渡可能時期' },
+      { id: 'info14', title: '完成時期(築年月)' },
+      { id: 'info15', title: '所在階' },
+      { id: 'info16', title: '向き' },
+      { id: 'info17', title: 'エネルギー消費性能' },
+      { id: 'info18', title: '断熱性能' },
+      { id: 'info19', title: '目安光熱費' },
+      { id: 'info20', title: 'リフォーム' },
+      { id: 'info21', title: 'その他制限事項' },
+      { id: 'info22', title: 'その他概要・特記事項' },
+      { id: 'info23', title: '所在地' },
+      { id: 'info24', title: '交通' },
+      { id: 'info25', title: '総戸数' },
+      { id: 'info26', title: '構造・階建て' },
+      { id: 'info27', title: '敷地面積' },
+      { id: 'info28', title: '敷地の権利形態' },
+      { id: 'info29', title: '用途地域' },
+      { id: 'info30', title: '駐車場' },
+    ],
+    encoding: 'utf8',
+    alwaysQuote: true
   });
-
-  // Save the Excel file
-  const excelPath = path.join(parentDir, 'scrapping.xlsx');
-  await workbook.xlsx.writeFile(excelPath);
-  console.log('Scraping complete! Data saved.');
+  await csvWriter.writeRecords(allRecords);
+  console.log('Scraping complete! Data saved as CSV.');
 
   await browser.close();
 })();

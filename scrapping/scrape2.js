@@ -1,11 +1,11 @@
 const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
-const ExcelJS = require('exceljs');
+const createCsvWriter = require('csv-writer').createObjectCsvWriter;
 const axios = require('axios');
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-const randomtime = (min = 0, max = 10) => Math.floor(Math.random() * (max - min + 1)) + min;
+const randomtime = (min = 1000, max = 1100) => Math.floor(Math.random() * (max - min + 1)) + min;
 
 (async () => {
   // Create a timestamped parent folder
@@ -59,6 +59,8 @@ const randomtime = (min = 0, max = 10) => Math.floor(Math.random() * (max - min 
   await page.select('#cond_sortby', 'newdate'); // Sort by "新着順"
   // await delay(randomtime());
   await page.select('#cond_newdate', '1'); // select "本日"
+  
+  await delay(randomtime(2000, 3000)); // Wait for the page to load after sorting
 
   for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
     console.log(`Scraping page ${pageNum}: ${pageUrl}`);
@@ -69,18 +71,18 @@ const randomtime = (min = 0, max = 10) => Math.floor(Math.random() * (max - min 
       return links.map(link => link.href);
     });
 
-    for (let i = 0; i < propertyLinks.length; i++) {
-      console.log(`Property ${i + 1} URL: ${propertyLinks[i]}`);
-    }
+    // for (let i = 0; i < Math.min(30,propertyLinks.length) ; i++) {
+    //   console.log(`Property ${i + 1} URL: ${propertyLinks[i]}`);
+    // }
 
     console.log(`Found ${propertyLinks.length} properties on page ${pageNum}.`);
 
     for (let i = 0; i < propertyLinks.length; i++) {
-      // await delay(randomtime()); // Wait for random seconds to ensure the page is fully loaded
+      await delay(randomtime()); // Wait for random seconds to ensure the page is fully loaded
 
       const url = propertyLinks[i];
       const detailPage = await browser.newPage();
-      await detailPage.goto(url, { waitUntil: 'domcontentloaded' ,timeout: 0 });
+      await detailPage.goto(url, { waitUntil: 'domcontentloaded', timeout: 0 });
 
       // Create folder for images
       const propertyFolderName = `property_${i + 1 + (pageNum - 1) * propertyLinks.length}`;
@@ -236,65 +238,59 @@ const randomtime = (min = 0, max = 10) => Math.floor(Math.random() * (max - min 
     if (nextPageExists) {
       console.log('Navigating to the next page...');
       await page.click(nextPageButtonSelector);
-      await page.waitForNavigation({ waitUntil: 'domcontentloaded',timeout: 0  });
+      await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 0 });
     } else {
       console.log('No next page button found. Ending pagination.');
     }
   }
 
-  const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet('Data');
-
-  // Define columns with desired widths
-  worksheet.columns = [
-    { header: '不動産のURL', key: 'url', width: '20' },
-    { header: '画像1', key: 'ImageURLs1', width: '20' },
-    { header: '画像2', key: 'ImageURLs2', width: '20' },
-    { header: '画像3', key: 'ImageURLs3', width: '20' },
-    { header: '画像4', key: 'ImageURLs4', width: '20' },
-    { header: '画像5', key: 'ImageURLs5', width: '20' },
-    { header: '株式会社', key: 'info29', width: '30' },
-    { header: 'Tel', key: 'info30', width: '30' },
-    { header: '価格', key: 'info1', width: '30' },
-    { header: '管理費等', key: 'info2', width: '30' },
-    { header: '修繕積立金', key: 'info3', width: '30' },
-    { header: '間取り', key: 'info4', width: '30' },
-    { header: '専有面積', key: 'info5', width: '20' },
-    { header: 'バルコニー面積', key: 'info6', width: '20' },
-    { header: '駐車場', key: 'info7', width: '20' },
-    { header: '築年月', key: 'info8', width: '20' },
-    { header: '所在地', key: 'info9', width: '30' },
-    { header: '交通', key: 'info10', width: '20' },
-    { header: '所在階 / 階数', key: 'info11', width: '20' },
-    { header: '総戸数', key: 'info12', width: '20' },
-    { header: '主要採光面', key: 'info13', width: '20' },
-    { header: '建物構造', key: 'info14', width: '20' },
-    { header: '用途地域', key: 'info15', width: '20' },
-    { header: '土地権利', key: 'info16', width: '20' },
-    { header: '国土法届出', key: 'info17', width: '30' },
-    { header: '管理', key: 'info18', width: '30' },
-    { header: '現況', key: 'info19', width: '30' },
-    { header: '引渡し', key: 'info20', width: '30' },
-    { header: '取引態様', key: 'info21', width: '30' },
-    { header: 'その他条件', key: 'info22', width: '30' },
-    { header: '備考', key: 'info23', width: '50' },
-    { header: 'LIFULL HOME\'S 物件番号', key: 'info24', width: '30' },
-    { header: '自社物件番号', key: 'info25', width: '30' },
-
-    { header: '情報公開日', key: 'info26', width: '30' },
-    { header: '最新情報提供日', key: 'info27', width: '30' },
-    { header: '情報有効期限', key: 'info28', width: '30' },
-  ];
-
-  // Add data rows
-  allRecords.forEach(record => {
-    worksheet.addRow(record);
+  // Save the CSV file
+  const csvPath = path.join(parentDir, 'scrapping.csv');
+  const csvWriter = createCsvWriter({
+    path: csvPath,
+    header: [
+      { id: 'url', title: '不動産のURL' },
+      { id: 'ImageURLs1', title: '画像1' },
+      { id: 'ImageURLs2', title: '画像2' },
+      { id: 'ImageURLs3', title: '画像3' },
+      { id: 'ImageURLs4', title: '画像4' },
+      { id: 'ImageURLs5', title: '画像5' },
+      { id: 'info30', title: '株式会社' },
+      { id: 'info29', title: 'Tel' },
+      { id: 'info1', title: '価格' },
+      { id: 'info2', title: '管理費等' },
+      { id: 'info3', title: '修繕積立金' },
+      { id: 'info4', title: '間取り' },
+      { id: 'info5', title: '専有面積' },
+      { id: 'info6', title: 'バルコニー面積' },
+      { id: 'info7', title: '駐車場' },
+      { id: 'info8', title: '築年月' },
+      { id: 'info9', title: '所在地' },
+      { id: 'info10', title: '交通' },
+      { id: 'info11', title: '所在階 / 階数' },
+      { id: 'info12', title: '総戸数' },
+      { id: 'info13', title: '主要採光面' },
+      { id: 'info14', title: '建物構造' },
+      { id: 'info15', title: '用途地域' },
+      { id: 'info16', title: '土地権利' },
+      { id: 'info17', title: '国土法届出' },
+      { id: 'info18', title: '管理' },
+      { id: 'info19', title: '現況' },
+      { id: 'info20', title: '引渡し' },
+      { id: 'info21', title: '取引態様' },
+      { id: 'info22', title: 'その他条件' },
+      { id: 'info23', title: '備考' },
+      { id: 'info24', title: 'LIFULL HOME\'S 物件番号' },
+      { id: 'info25', title: '自社物件番号' },
+      { id: 'info26', title: '情報公開日' },
+      { id: 'info27', title: '最新情報提供日' },
+      { id: 'info28', title: '情報有効期限' },
+    ],
+    encoding: 'utf8',
+    alwaysQuote: true
   });
-
-  // Save the Excel file
-  const excelPath = path.join(parentDir, 'scrapping.xlsx');
-  await workbook.xlsx.writeFile(excelPath);
-  console.log('Scraping complete! Data saved.');
+  await csvWriter.writeRecords(allRecords);
+  console.log('Scraping complete! Data saved as CSV.');
 
   await browser.close();
 })();
